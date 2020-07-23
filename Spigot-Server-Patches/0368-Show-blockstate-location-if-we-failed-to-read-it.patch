@@ -5,7 +5,7 @@ Subject: [PATCH] Show blockstate location if we failed to read it
 
 
 diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlockEntityState.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlockEntityState.java
-index feeae1a9eb309ae4101783b191bb2bffe9aeb7d3..6e9eff2c29528b857cf758e9e45606c8a1c1cc8d 100644
+index 206bf83d10b9e52bcd65fba0686d71260f0d53af..dc6f9f4f4404ad4fa13f4a206d2e3d9e250322b4 100644
 --- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlockEntityState.java
 +++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlockEntityState.java
 @@ -19,6 +19,8 @@ public class CraftBlockEntityState<T extends TileEntity> extends CraftBlockState
@@ -17,7 +17,7 @@ index feeae1a9eb309ae4101783b191bb2bffe9aeb7d3..6e9eff2c29528b857cf758e9e45606c8
          this.tileEntityClass = tileEntityClass;
  
          // get tile entity from block:
-@@ -38,6 +40,14 @@ public class CraftBlockEntityState<T extends TileEntity> extends CraftBlockState
+@@ -39,6 +41,14 @@ public class CraftBlockEntityState<T extends TileEntity> extends CraftBlockState
              this.load(this.snapshot);
          }
          // Paper end
