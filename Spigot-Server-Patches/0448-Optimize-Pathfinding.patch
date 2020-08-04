@@ -7,11 +7,11 @@ Prevents pathfinding from spamming failures for things such as
 arrow attacks.
 
 diff --git a/src/main/java/net/minecraft/server/NavigationAbstract.java b/src/main/java/net/minecraft/server/NavigationAbstract.java
-index cca6242e38fc286eea810eb8f2e4d1ab5429b9df..e6dc5b9ce1b2f844d84a7cdf9bce030bc8eb568d 100644
+index 634480135ccfb299398af1e82ce28dc3e5c5a0d7..f093f930720e8c69e963afe7fdba2e1db1c84745 100644
 --- a/src/main/java/net/minecraft/server/NavigationAbstract.java
 +++ b/src/main/java/net/minecraft/server/NavigationAbstract.java
 @@ -11,7 +11,7 @@ public abstract class NavigationAbstract {
-     protected final EntityInsentient a; public Entity getEntity() { return a; } // Paper - OBFHELPER
+     protected final EntityInsentient a; public EntityInsentient getEntity() { return a; } // Paper - OBFHELPER
      protected final World b;
      @Nullable
 -    protected PathEntity c;

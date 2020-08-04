@@ -19,7 +19,7 @@ index 3303edadf722557212ab973cb4f1684a0a8ae0f2..681465d8a74831461dce4615d2d19c7e
  
      private int t() {
 diff --git a/src/main/java/net/minecraft/server/NavigationAbstract.java b/src/main/java/net/minecraft/server/NavigationAbstract.java
-index 6c65bab60d21b6c431855bc6516d4fd840a0efb8..0ed4b1d9c636a9051718f800ba5717e3ae46cdc9 100644
+index 6c65bab60d21b6c431855bc6516d4fd840a0efb8..dc41aecdbc506c126438c7cacefbda106d036db1 100644
 --- a/src/main/java/net/minecraft/server/NavigationAbstract.java
 +++ b/src/main/java/net/minecraft/server/NavigationAbstract.java
 @@ -8,7 +8,7 @@ import javax.annotation.Nullable;
@@ -27,7 +27,7 @@ index 6c65bab60d21b6c431855bc6516d4fd840a0efb8..0ed4b1d9c636a9051718f800ba5717e3
  public abstract class NavigationAbstract {
  
 -    protected final EntityInsentient a;
-+    protected final EntityInsentient a; public Entity getEntity() { return a; } // Paper - OBFHELPER
++    protected final EntityInsentient a; public EntityInsentient getEntity() { return a; } // Paper - OBFHELPER
      protected final World b;
      @Nullable
      protected PathEntity c;
