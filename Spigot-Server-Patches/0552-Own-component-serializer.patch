@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mariell Hoversholm <proximyst@proximyst.com>
+Date: Thu, 13 Aug 2020 16:58:22 +0200
+Subject: [PATCH] Own component serializer
+
+
+diff --git a/src/main/java/net/minecraft/server/PacketPlayOutChat.java b/src/main/java/net/minecraft/server/PacketPlayOutChat.java
+index 87f6ded6e7410702229ed066b2dcdb510853252d..00f5d6ab72ce3de7382e8a5f23c25c740dfa43f9 100644
+--- a/src/main/java/net/minecraft/server/PacketPlayOutChat.java
++++ b/src/main/java/net/minecraft/server/PacketPlayOutChat.java
+@@ -32,9 +32,9 @@ public class PacketPlayOutChat implements Packet<PacketListenerPlayOut> {
+             //packetdataserializer.a(net.md_5.bungee.chat.ComponentSerializer.toString(components)); // Paper - comment, replaced with below
+             // Paper start - don't nest if we don't need to so that we can preserve formatting
+             if (this.components.length == 1) {
+-                packetdataserializer.a(net.md_5.bungee.chat.ComponentSerializer.toString(this.components[0]), MAX_LENGTH); // Paper - use proper max length
++                packetdataserializer.a(com.destroystokyo.paper.components.ComponentSerializer.toString(this.components[0]), MAX_LENGTH); // Paper - use proper max length // Paper - use own component serializer
+             } else {
+-                packetdataserializer.a(net.md_5.bungee.chat.ComponentSerializer.toString(this.components), MAX_LENGTH); // Paper - use proper max length
++                packetdataserializer.a(com.destroystokyo.paper.components.ComponentSerializer.toString(this.components), MAX_LENGTH); // Paper - use proper max length // Paper - use own component serializer
+             }
+             // Paper end
+         } else {

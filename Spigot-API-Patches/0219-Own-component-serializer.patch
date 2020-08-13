@@ -1,0 +1,1362 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mariell Hoversholm <proximyst@proximyst.com>
+Date: Thu, 13 Aug 2020 16:58:15 +0200
+Subject: [PATCH] Own component serializer
+
+
+diff --git a/src/main/java/com/destroystokyo/paper/components/BaseComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/BaseComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..744abe41d1e1d79416e42c1f40a3d1aa7a63ffbc
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/BaseComponentSerializer.java
+@@ -0,0 +1,78 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.JsonArray;
++import com.google.gson.JsonDeserializationContext;
++import com.google.gson.JsonDeserializer;
++import com.google.gson.JsonElement;
++import com.google.gson.JsonObject;
++import com.google.gson.JsonParseException;
++import com.google.gson.reflect.TypeToken;
++import net.md_5.bungee.api.chat.BaseComponent;
++import net.md_5.bungee.api.chat.KeybindComponent;
++import net.md_5.bungee.api.chat.ScoreComponent;
++import net.md_5.bungee.api.chat.SelectorComponent;
++import net.md_5.bungee.api.chat.TextComponent;
++import net.md_5.bungee.api.chat.TranslatableComponent;
++import org.jetbrains.annotations.NotNull;
++import org.jetbrains.annotations.Nullable;
++
++import java.lang.reflect.Type;
++import java.util.ArrayList;
++import java.util.List;
++
++final class BaseComponentSerializer implements JsonDeserializer<BaseComponent> {
++    @NotNull
++    public static final TypeToken<BaseComponent> SINGULAR_TYPE_TOKEN = new TypeToken<BaseComponent>() {
++    };
++    @NotNull
++    public static final TypeToken<BaseComponent[]> ARRAY_TYPE_TOKEN = new TypeToken<BaseComponent[]>() {
++    };
++    @NotNull
++    public static final TypeToken<List<BaseComponent>> LIST_TYPE_TOKEN = new TypeToken<List<BaseComponent>>() {
++    };
++
++    @Override
++    @NotNull
++    public BaseComponent deserialize(@NotNull JsonElement json, @Nullable Type typeOfT, @NotNull JsonDeserializationContext context) throws JsonParseException {
++        if (json.isJsonPrimitive()) {
++            return new TextComponent(json.getAsString());
++        }
++
++        JsonObject object = json.getAsJsonObject();
++        try {
++            if (object.has("translate")) {
++                return context.deserialize(json, TranslatableComponent.class);
++            }
++            if (object.has("score")) {
++                return context.deserialize(json, ScoreComponent.class);
++            }
++            if (object.has("selector")) {
++                return context.deserialize(json, SelectorComponent.class);
++            }
++            if (object.has("keybind")) {
++                return context.deserialize(json, KeybindComponent.class);
++            }
++            // BungeeCord-Chat does not support NBT.
++            return context.deserialize(json, TextComponent.class);
++        } catch (JsonParseException ex) {
++            throw new JsonParseException("Don't know how to turn " + json + " into Component", ex);
++        }
++    }
++
++    public static final class BaseComponentArraySerializer implements JsonDeserializer<BaseComponent[]> {
++        @Override
++        @NotNull
++        public BaseComponent[] deserialize(@NotNull JsonElement json, @Nullable Type typeOfT, @NotNull JsonDeserializationContext context) throws JsonParseException {
++            if (!json.isJsonArray()) {
++                return new BaseComponent[]{context.deserialize(json, BaseComponent.class)};
++            }
++
++            JsonArray array = json.getAsJsonArray();
++            List<BaseComponent> components = new ArrayList<>();
++            for (JsonElement jsonElement : array) {
++                components.add(context.deserialize(jsonElement, BaseComponent.class));
++            }
++            return components.toArray(new BaseComponent[0]);
++        }
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/ClickEventSerializer.java b/src/main/java/com/destroystokyo/paper/components/ClickEventSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..8efc89ba6324b2d222f713dd3e1baa8200bbe585
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/ClickEventSerializer.java
+@@ -0,0 +1,63 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.ClickEvent;
++import org.bukkit.UndefinedNullability;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++import java.util.Locale;
++
++final class ClickEventSerializer extends TypeAdapter<ClickEvent> {
++    @NotNull
++    public static TypeToken<ClickEvent> TYPE_TOKEN = new TypeToken<ClickEvent>() {
++    };
++
++    @Override
++    @NotNull
++    public ClickEvent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        ClickEvent.Action action = null;
++        String value = null;
++
++        while (in.hasNext()) {
++            switch (in.nextName()) {
++                case "action":
++                    action = ClickEvent.Action.valueOf(in.nextString().toUpperCase(Locale.ENGLISH));
++                    break;
++                case "value":
++                    value = in.nextString();
++                    break;
++            }
++        }
++
++        in.endObject();
++
++        if (action == null)
++            return ComponentSerializerHelper.missingField("action");
++        if (value == null)
++            return ComponentSerializerHelper.missingField("value");
++
++        return new ClickEvent(
++            action,
++            value
++        );
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull ClickEvent value) throws IOException {
++        out.beginObject();
++
++        out.name("action");
++        out.value(value.getAction().name().toLowerCase(Locale.ENGLISH));
++
++        out.name("value");
++        out.value(value.getValue());
++
++        out.endObject();
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/ComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/ComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..40e45dfcac182b7d0bff8aec9ea9dd378d971b50
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/ComponentSerializer.java
+@@ -0,0 +1,65 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.Gson;
++import com.google.gson.GsonBuilder;
++import com.google.gson.JsonElement;
++import com.google.gson.JsonParser;
++import net.md_5.bungee.api.chat.BaseComponent;
++import net.md_5.bungee.api.chat.hover.content.Content;
++import org.jetbrains.annotations.NotNull;
++
++public final class ComponentSerializer implements GsonProvider {
++    @NotNull
++    private static final ComponentSerializer INSTANCE = new ComponentSerializer();
++
++    @NotNull
++    private final JsonParser jsonParser = new JsonParser();
++
++    @NotNull
++    private final Gson gson = new GsonBuilder()
++        .registerTypeAdapter(BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType(), new BaseComponentSerializer.BaseComponentArraySerializer())
++        .registerTypeAdapter(BaseComponentSerializer.SINGULAR_TYPE_TOKEN.getType(), new BaseComponentSerializer())
++        .registerTypeAdapter(ClickEventSerializer.TYPE_TOKEN.getType(), new ClickEventSerializer().nullSafe())
++        .registerTypeHierarchyAdapter(Content.class, new HoverEventContentSerializer(this).nullSafe())
++        .registerTypeAdapter(HoverEventContentSerializer.LIST_TYPE_TOKEN.getType(), new HoverEventContentSerializer.ListSerializer(this).nullSafe())
++        .registerTypeAdapter(HoverEventSerializer.TYPE_TOKEN.getType(), new HoverEventSerializer(this).nullSafe())
++        .registerTypeAdapter(KeybindComponentSerializer.TYPE_TOKEN.getType(), new KeybindComponentSerializer(this).nullSafe())
++        .registerTypeAdapter(ScoreComponentSerializer.TYPE_TOKEN.getType(), new ScoreComponentSerializer(this).nullSafe())
++        .registerTypeAdapter(SelectorComponentSerializer.TYPE_TOKEN.getType(), new SelectorComponentSerializer(this).nullSafe())
++        .registerTypeAdapter(TextComponentSerializer.TYPE_TOKEN.getType(), new TextComponentSerializer(this).nullSafe())
++        .registerTypeAdapter(TranslatableComponentSerializer.TYPE_TOKEN.getType(), new TranslatableComponentSerializer(this).nullSafe())
++        .create();
++
++    @NotNull
++    public static BaseComponent[] parse(@NotNull String json) {
++        JsonElement jsonElement = INSTANCE.jsonParser.parse(json);
++
++        if (jsonElement.isJsonArray()) {
++            return INSTANCE.getGsonInstance().fromJson(jsonElement, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType());
++        }
++
++        return new BaseComponent[]{
++            INSTANCE.getGsonInstance().fromJson(jsonElement, BaseComponentSerializer.SINGULAR_TYPE_TOKEN.getType())
++        };
++    }
++
++    @NotNull
++    public static String toString(@NotNull BaseComponent component) {
++        return INSTANCE.getGsonInstance().toJson(component);
++    }
++
++    @NotNull
++    public static String toString(@NotNull BaseComponent... components) {
++        if (components.length == 1) {
++            return toString(components[0]);
++        }
++
++        return INSTANCE.getGsonInstance().toJson(components);
++    }
++
++    @Override
++    @NotNull
++    public Gson getGsonInstance() {
++        return gson;
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/ComponentSerializerHelper.java b/src/main/java/com/destroystokyo/paper/components/ComponentSerializerHelper.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f369e5bedaeb409a2717f62fe7404bef3a902dd
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/ComponentSerializerHelper.java
+@@ -0,0 +1,107 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.JsonParseException;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.ChatColor;
++import net.md_5.bungee.api.chat.BaseComponent;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++import java.util.Arrays;
++
++final class ComponentSerializerHelper {
++    private ComponentSerializerHelper() {
++    }
++
++    static void deserialize(
++        @NotNull JsonReader in,
++        @NotNull String fieldName,
++        @NotNull BaseComponent component,
++        @NotNull GsonProvider gsonProvider
++    ) throws IOException {
++        switch (fieldName) {
++            // Children
++            case "extra":
++                component.setExtra(Arrays.asList(gsonProvider.getGsonInstance().fromJson(in, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType())));
++                break;
++
++            // Formatting
++            case "color":
++                component.setColor(ChatColor.of(in.nextString()));
++                break;
++            case "font":
++                component.setFont(in.nextString());
++                break;
++            case "bold":
++                component.setBold(in.nextBoolean());
++                break;
++            case "italic":
++                component.setItalic(in.nextBoolean());
++                break;
++            case "underlined":
++                component.setUnderlined(in.nextBoolean());
++                break;
++            case "strikethrough":
++                component.setStrikethrough(in.nextBoolean());
++                break;
++            case "obfuscated":
++                component.setObfuscated(in.nextBoolean());
++                break;
++
++            // Interactivity
++            case "insertion":
++                component.setInsertion(in.nextString());
++                break;
++            case "clickEvent":
++                component.setClickEvent(gsonProvider.getGsonInstance().fromJson(in, ClickEventSerializer.TYPE_TOKEN.getType()));
++                break;
++            case "hoverEvent":
++                component.setHoverEvent(gsonProvider.getGsonInstance().fromJson(in, HoverEventSerializer.TYPE_TOKEN.getType()));
++                break;
++        }
++
++    }
++
++    static void serialize(
++        @NotNull JsonWriter out,
++        @NotNull BaseComponent component,
++        @NotNull GsonProvider gsonProvider
++    ) throws IOException {
++        if (component.getExtra() != null && !component.getExtra().isEmpty()) {
++            out.name("extra");
++            gsonProvider.getGsonInstance().toJson(component.getExtra(), BaseComponentSerializer.LIST_TYPE_TOKEN.getType(), out);
++        }
++
++        if (component.getColorRaw() != null)
++            out.name("color").value(component.getColor().getName());
++        if (component.getFontRaw() != null)
++            out.name("font").value(component.getFontRaw());
++        if (component.isBoldRaw() != null)
++            out.name("bold").value(component.isBoldRaw());
++        if (component.isItalicRaw() != null)
++            out.name("italic").value(component.isItalicRaw());
++        if (component.isUnderlinedRaw() != null)
++            out.name("underlined").value(component.isUnderlinedRaw());
++        if (component.isStrikethroughRaw() != null)
++            out.name("strikethrough").value(component.isStrikethroughRaw());
++        if (component.isObfuscatedRaw() != null)
++            out.name("obfuscated").value(component.isObfuscatedRaw());
++
++        if (component.getInsertion() != null)
++            out.name("insertion").value(component.getInsertion());
++        if (component.getClickEvent() != null) {
++            out.name("clickEvent");
++            gsonProvider.getGsonInstance().toJson(component.getClickEvent(), ClickEventSerializer.TYPE_TOKEN.getType(), out);
++        }
++        if (component.getHoverEvent() != null) {
++            out.name("hoverEvent");
++            gsonProvider.getGsonInstance().toJson(component.getHoverEvent(), HoverEventSerializer.TYPE_TOKEN.getType(), out);
++        }
++    }
++
++    @NotNull
++    static <T> T missingField(@NotNull String name) {
++        throw new JsonParseException("Could not parse component: " + name + " field missing");
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/GsonProvider.java b/src/main/java/com/destroystokyo/paper/components/GsonProvider.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..be4c1f4c3dcef873b02c48f34743639fba28bad8
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/GsonProvider.java
+@@ -0,0 +1,9 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.Gson;
++import org.jetbrains.annotations.NotNull;
++
++interface GsonProvider {
++    @NotNull
++    Gson getGsonInstance();
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/HoverEventContentSerializer.java b/src/main/java/com/destroystokyo/paper/components/HoverEventContentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..3d2fc12ce2d806ea2086c20f4a0c4d7f8a78e9aa
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/HoverEventContentSerializer.java
+@@ -0,0 +1,185 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.JsonElement;
++import com.google.gson.JsonObject;
++import com.google.gson.JsonParseException;
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonToken;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.BaseComponent;
++import net.md_5.bungee.api.chat.ItemTag;
++import net.md_5.bungee.api.chat.hover.content.Content;
++import net.md_5.bungee.api.chat.hover.content.Entity;
++import net.md_5.bungee.api.chat.hover.content.Item;
++import net.md_5.bungee.api.chat.hover.content.Text;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.List;
++
++final class HoverEventContentSerializer extends TypeAdapter<Content> {
++    @NotNull
++    public static final TypeToken<Content> SINGULAR_TYPE_TOKEN = new TypeToken<Content>() {
++    };
++    @NotNull
++    public static final TypeToken<List<Content>> LIST_TYPE_TOKEN = new TypeToken<List<Content>>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public HoverEventContentSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public Content read(@NotNull JsonReader in) throws IOException {
++        if (in.peek() == JsonToken.STRING) {
++            // This has to be a show_text content.
++            return new Text(in.nextString());
++        }
++        if (in.peek() == JsonToken.BEGIN_ARRAY) {
++            // This has to be a show_text content.
++            return new Text(gsonProvider.getGsonInstance().<BaseComponent[]>fromJson(in, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType()));
++        }
++
++        JsonObject element = gsonProvider.getGsonInstance().fromJson(in, JsonObject.class);
++        JsonElement id = element.get("id");
++        if (id != null && !id.isJsonNull()) {
++            // Ok, not Text.
++            if (element.has("type")) {
++                // show_entity
++                JsonElement name = element.get("name");
++                return new Entity(
++                    element.get("type").getAsString(),
++                    id.getAsString(),
++                    name != null && !name.isJsonNull()
++                        ? gsonProvider.getGsonInstance().<BaseComponent[]>fromJson(name, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType())[0]
++                        : null
++                );
++            } else {
++                // show_item
++                JsonElement count = element.get("count");
++                JsonElement tag = element.get("tag");
++                return new Item(
++                    id.getAsString(),
++                    count == null || count.isJsonNull() ? -1 : count.getAsInt(),
++                    tag == null || tag.isJsonNull() ? null : ItemTag.ofNbt(tag.getAsString())
++                );
++            }
++        } else if (id != null && id.isJsonNull()) {
++            throw new JsonParseException("Could not parse component: id field invalid");
++        } else {
++            // Must be a Text. Serialized `id` is never absent on other types.
++            return new Text(gsonProvider.getGsonInstance().<BaseComponent[]>fromJson(element, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType()));
++        }
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull Content content) throws IOException {
++        if (content instanceof Text) {
++            write0(out, (Text) content);
++        } else if (content instanceof Item) {
++            write0(out, (Item) content);
++        } else if (content instanceof Entity) {
++            write0(out, (Entity) content);
++        } else {
++            throw new IllegalArgumentException("invalid content type: " + content.getClass().getName());
++        }
++    }
++
++    private void write0(JsonWriter out, Text text) throws IOException {
++        Object value = text.getValue();
++        if (value == null) {
++            out.nullValue();
++        } else if (value instanceof String) {
++            out.value((String) value);
++        } else if (value instanceof BaseComponent[]) {
++            gsonProvider.getGsonInstance().toJson(value, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType(), out);
++        } else {
++            throw new IllegalArgumentException("invalid text value type: " + value.getClass().getName());
++        }
++    }
++
++    private void write0(JsonWriter out, Item item) throws IOException {
++        out.beginObject();
++
++        out.name("id");
++        out.value(item.getId() == null ? "minecraft:air" : item.getId());
++
++        if (item.getCount() != -1) {
++            out.name("count");
++            out.value(item.getCount());
++        }
++
++        if (item.getTag() != null) {
++            out.name("tag");
++            out.value(item.getTag().getNbt());
++        }
++
++        out.endObject();
++    }
++
++    private void write0(JsonWriter out, Entity entity) throws IOException {
++        out.beginObject();
++
++        out.name("type");
++        out.value(entity.getType() == null ? "minecraft:pig" : entity.getType());
++
++        out.name("id");
++        out.value(entity.getId());
++
++        if (entity.getName() != null) {
++            out.name("name");
++            out.beginArray();
++            gsonProvider.getGsonInstance().toJson(entity.getName(), BaseComponentSerializer.SINGULAR_TYPE_TOKEN.getType(), out);
++            out.endArray();
++        }
++
++        out.endObject();
++    }
++
++    public static final class ListSerializer extends TypeAdapter<List<Content>> {
++        @NotNull
++        private final GsonProvider gsonProvider;
++
++        public ListSerializer(@NotNull GsonProvider gsonProvider) {
++            this.gsonProvider = gsonProvider;
++        }
++
++        @Override
++        @NotNull
++        public List<Content> read(@NotNull JsonReader in) throws IOException {
++            if (in.peek() != JsonToken.BEGIN_ARRAY) {
++                return Arrays.asList(gsonProvider.getGsonInstance().<Content>fromJson(in, SINGULAR_TYPE_TOKEN.getType()));
++            }
++
++            in.beginArray();
++            List<Content> list = new ArrayList<>();
++            while (in.hasNext()) {
++                list.add(gsonProvider.getGsonInstance().fromJson(in, SINGULAR_TYPE_TOKEN.getType()));
++            }
++            in.endArray();
++            return list;
++        }
++
++        @Override
++        public void write(@NotNull JsonWriter out, @NotNull List<Content> value) throws IOException {
++            if (value.size() == 1) {
++                gsonProvider.getGsonInstance().toJson(value.get(0), SINGULAR_TYPE_TOKEN.getType(), out);
++                return;
++            }
++
++            out.beginArray();
++            for (Content content : value) {
++                gsonProvider.getGsonInstance().toJson(content, SINGULAR_TYPE_TOKEN.getType(), out);
++            }
++            out.endArray();
++        }
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/HoverEventSerializer.java b/src/main/java/com/destroystokyo/paper/components/HoverEventSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..912d30c7b38b7b4be096b9524298c2561999ee9e
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/HoverEventSerializer.java
+@@ -0,0 +1,86 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.BaseComponent;
++import net.md_5.bungee.api.chat.HoverEvent;
++import net.md_5.bungee.api.chat.hover.content.Content;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++import java.util.List;
++import java.util.Locale;
++
++final class HoverEventSerializer extends TypeAdapter<HoverEvent> {
++    @NotNull
++    public static final TypeToken<HoverEvent> TYPE_TOKEN = new TypeToken<HoverEvent>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public HoverEventSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public HoverEvent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        HoverEvent.Action action = null;
++        BaseComponent[] value = null;
++        List<Content> contents = null;
++
++        while (in.hasNext()) {
++            switch (in.nextName()) {
++                case "action":
++                    action = HoverEvent.Action.valueOf(in.nextString().toUpperCase(Locale.ENGLISH));
++                    break;
++                case "value":
++                    if (contents != null) {
++                        // We don't care as it won't be used.
++                        in.skipValue();
++                        break;
++                    }
++                    value = gsonProvider.getGsonInstance().fromJson(in, BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType());
++                    break;
++                case "contents":
++                    contents = gsonProvider.getGsonInstance().fromJson(in, HoverEventContentSerializer.LIST_TYPE_TOKEN.getType());
++                    break;
++            }
++        }
++
++        in.endObject();
++
++        if (action == null)
++            return ComponentSerializerHelper.missingField("action");
++        if (value == null && contents == null)
++            return ComponentSerializerHelper.missingField("value/contents");
++
++        if (contents != null) return new HoverEvent(action, contents);
++        else return new HoverEvent(action, value);
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull HoverEvent value) throws IOException {
++        out.beginObject();
++
++        out.name("action");
++        out.value(value.getAction().name().toLowerCase(Locale.ENGLISH));
++
++        if (value.isLegacy()) {
++            // Legacy = BaseComponent[] and "value" field
++            out.name("value");
++            gsonProvider.getGsonInstance().toJson(value.getValue(), BaseComponentSerializer.ARRAY_TYPE_TOKEN.getType(), out);
++        } else {
++            // Not legacy = List<Content> and "contents" field
++            out.name("contents");
++            gsonProvider.getGsonInstance().toJson(value.getContents(), HoverEventContentSerializer.LIST_TYPE_TOKEN.getType(), out);
++        }
++
++        out.endObject();
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/KeybindComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/KeybindComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d34d65849fc19eb8014a4f54f2e527cbd9f4a475
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/KeybindComponentSerializer.java
+@@ -0,0 +1,63 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.KeybindComponent;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++
++final class KeybindComponentSerializer extends TypeAdapter<KeybindComponent> {
++    @NotNull
++    public static final TypeToken<KeybindComponent> TYPE_TOKEN = new TypeToken<KeybindComponent>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public KeybindComponentSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public KeybindComponent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        KeybindComponent keybindComponent = new KeybindComponent((String) null);
++
++        while (in.hasNext()) {
++            String name = in.nextName();
++            if ("keybind".equals(name)) {
++                keybindComponent.setKeybind(in.nextString());
++            } else {
++                ComponentSerializerHelper.deserialize(in, name, keybindComponent, gsonProvider);
++            }
++        }
++
++        in.endObject();
++
++        if (keybindComponent.getKeybind() == null)
++            return ComponentSerializerHelper.missingField("keybind");
++
++        return keybindComponent;
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull KeybindComponent value) throws IOException {
++        out.beginObject();
++
++        out.name("keybind");
++        out.value(value.getKeybind());
++
++        ComponentSerializerHelper.serialize(
++            out,
++            value,
++            gsonProvider
++        );
++
++        out.endObject();
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/ScoreComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/ScoreComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..a0c9a3111d59cb3a3954046398761fefa5f62ead
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/ScoreComponentSerializer.java
+@@ -0,0 +1,95 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.ScoreComponent;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++
++final class ScoreComponentSerializer extends TypeAdapter<ScoreComponent> {
++    @NotNull
++    public static final TypeToken<ScoreComponent> TYPE_TOKEN = new TypeToken<ScoreComponent>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public ScoreComponentSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public ScoreComponent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        ScoreComponent scoreComponent = new ScoreComponent(null, null);
++
++        while (in.hasNext()) {
++            String name = in.nextName();
++            if ("score".equals(name)) {
++                in.beginObject();
++                while (in.hasNext()) {
++                    switch (in.nextName()) {
++                        case "name":
++                            scoreComponent.setName(in.nextString());
++                            break;
++                        case "objective":
++                            scoreComponent.setObjective(in.nextString());
++                            break;
++                        case "value":
++                            String scoreValue = in.nextString();
++                            if (scoreValue != null && !scoreValue.isEmpty()) {
++                                scoreComponent.setValue(scoreValue);
++                            }
++                            break;
++                    }
++                }
++                in.endObject();
++            } else {
++                ComponentSerializerHelper.deserialize(in, name, scoreComponent, gsonProvider);
++            }
++        }
++
++        in.endObject();
++
++        if (scoreComponent.getName() == null)
++            return ComponentSerializerHelper.missingField("score.name");
++        if (scoreComponent.getObjective() == null)
++            return ComponentSerializerHelper.missingField("score.objective");
++
++        return scoreComponent;
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull ScoreComponent value) throws IOException {
++        out.beginObject();
++
++        out.name("score");
++        out.beginObject();
++
++        out.name("name");
++        out.value(value.getName());
++
++        out.name("objective");
++        out.value(value.getObjective());
++
++        if (value.getValue() != null) {
++            out.name("value");
++            out.value(value.getValue());
++        }
++
++        out.endObject();
++
++        ComponentSerializerHelper.serialize(
++            out,
++            value,
++            gsonProvider
++        );
++
++        out.endObject();
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/SelectorComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/SelectorComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c37fd98a562752e99b3f0daf9a4f5959750c1e1f
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/SelectorComponentSerializer.java
+@@ -0,0 +1,63 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.SelectorComponent;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++
++final class SelectorComponentSerializer extends TypeAdapter<SelectorComponent> {
++    @NotNull
++    public static final TypeToken<SelectorComponent> TYPE_TOKEN = new TypeToken<SelectorComponent>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public SelectorComponentSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public SelectorComponent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        SelectorComponent selectorComponent = new SelectorComponent((String) null);
++
++        while (in.hasNext()) {
++            String name = in.nextName();
++            if ("selector".equals(name)) {
++                selectorComponent.setSelector(in.nextString());
++            } else {
++                ComponentSerializerHelper.deserialize(in, name, selectorComponent, gsonProvider);
++            }
++        }
++
++        in.endObject();
++
++        if (selectorComponent.getSelector() == null)
++            return ComponentSerializerHelper.missingField("selector");
++
++        return selectorComponent;
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull SelectorComponent value) throws IOException {
++        out.beginObject();
++
++        out.name("selector");
++        out.value(value.getSelector());
++
++        ComponentSerializerHelper.serialize(
++            out,
++            value,
++            gsonProvider
++        );
++
++        out.endObject();
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/TextComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/TextComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..21812ad06cae397e2ab740e59b7c9be37ba2e0b0
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/TextComponentSerializer.java
+@@ -0,0 +1,63 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.TextComponent;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++
++final class TextComponentSerializer extends TypeAdapter<TextComponent> {
++    @NotNull
++    public static final TypeToken<TextComponent> TYPE_TOKEN = new TypeToken<TextComponent>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public TextComponentSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public TextComponent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        TextComponent textComponent = new TextComponent();
++
++        while (in.hasNext()) {
++            String name = in.nextName();
++            if ("text".equals(name)) {
++                textComponent.setText(in.nextString());
++            } else {
++                ComponentSerializerHelper.deserialize(in, name, textComponent, gsonProvider);
++            }
++        }
++
++        in.endObject();
++
++        if (textComponent.getText() == null)
++            return ComponentSerializerHelper.missingField("text");
++
++        return textComponent;
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull TextComponent value) throws IOException {
++        out.beginObject();
++
++        out.name("text");
++        out.value(value.getText());
++
++        ComponentSerializerHelper.serialize(
++            out,
++            value,
++            gsonProvider
++        );
++
++        out.endObject();
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/components/TranslatableComponentSerializer.java b/src/main/java/com/destroystokyo/paper/components/TranslatableComponentSerializer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..7aaa3c2ae2d25b7200f15550425630e81111eea0
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/components/TranslatableComponentSerializer.java
+@@ -0,0 +1,74 @@
++package com.destroystokyo.paper.components;
++
++import com.google.gson.TypeAdapter;
++import com.google.gson.reflect.TypeToken;
++import com.google.gson.stream.JsonReader;
++import com.google.gson.stream.JsonWriter;
++import net.md_5.bungee.api.chat.TranslatableComponent;
++import org.jetbrains.annotations.NotNull;
++
++import java.io.IOException;
++
++final class TranslatableComponentSerializer extends TypeAdapter<TranslatableComponent> {
++    @NotNull
++    public static final TypeToken<TranslatableComponent> TYPE_TOKEN = new TypeToken<TranslatableComponent>() {
++    };
++
++    @NotNull
++    private final GsonProvider gsonProvider;
++
++    public TranslatableComponentSerializer(@NotNull GsonProvider gsonProvider) {
++        this.gsonProvider = gsonProvider;
++    }
++
++    @Override
++    @NotNull
++    public TranslatableComponent read(@NotNull JsonReader in) throws IOException {
++        in.beginObject();
++
++        TranslatableComponent translatableComponent = new TranslatableComponent();
++
++        while (in.hasNext()) {
++            String name = in.nextName();
++            switch (name) {
++                case "translate":
++                    translatableComponent.setTranslate(in.nextString());
++                    break;
++                case "with":
++                    translatableComponent.setWith(gsonProvider.getGsonInstance().fromJson(in, BaseComponentSerializer.LIST_TYPE_TOKEN.getType()));
++                    break;
++                default:
++                    ComponentSerializerHelper.deserialize(in, name, translatableComponent, gsonProvider);
++                    break;
++            }
++        }
++
++        in.endObject();
++
++        if (translatableComponent.getTranslate() == null)
++            return ComponentSerializerHelper.missingField("translate");
++
++        return translatableComponent;
++    }
++
++    @Override
++    public void write(@NotNull JsonWriter out, @NotNull TranslatableComponent value) throws IOException {
++        out.beginObject();
++
++        out.name("translate");
++        out.value(value.getTranslate());
++
++        if (value.getWith() != null && !value.getWith().isEmpty()) {
++            out.name("with");
++            gsonProvider.getGsonInstance().toJson(value.getWith(), BaseComponentSerializer.LIST_TYPE_TOKEN.getType(), out);
++        }
++
++        ComponentSerializerHelper.serialize(
++            out,
++            value,
++            gsonProvider
++        );
++
++        out.endObject();
++    }
++}
+diff --git a/src/test/java/com/destroystokyo/paper/components/ComponentsTest.java b/src/test/java/com/destroystokyo/paper/components/ComponentsTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..e5028ffb8b142e19ca11e0e00b9bef5200999703
+--- /dev/null
++++ b/src/test/java/com/destroystokyo/paper/components/ComponentsTest.java
+@@ -0,0 +1,327 @@
++package com.destroystokyo.paper.components;
++
++import net.md_5.bungee.api.ChatColor;
++import net.md_5.bungee.api.chat.BaseComponent;
++import net.md_5.bungee.api.chat.ClickEvent;
++import net.md_5.bungee.api.chat.ComponentBuilder;
++import net.md_5.bungee.api.chat.HoverEvent;
++import net.md_5.bungee.api.chat.ItemTag;
++import net.md_5.bungee.api.chat.TextComponent;
++import net.md_5.bungee.api.chat.TranslatableComponent;
++import net.md_5.bungee.api.chat.hover.content.Item;
++import net.md_5.bungee.api.chat.hover.content.Text;
++import org.junit.Assert;
++import org.junit.Test;
++
++import java.awt.*;
++
++public class ComponentsTest {
++
++    public static void testDissembleReassemble(BaseComponent[] components) {
++        String json = ComponentSerializer.toString(components);
++        BaseComponent[] parsed = ComponentSerializer.parse(json);
++        Assert.assertEquals(TextComponent.toLegacyText(parsed), TextComponent.toLegacyText(components));
++    }
++
++    public static void testDissembleReassemble(String json) {
++        BaseComponent[] parsed = ComponentSerializer.parse(json);
++        Assert.assertEquals(json, ComponentSerializer.toString(parsed));
++    }
++
++    @Test
++    public void testItemParse() {
++        // Declare all commonly used variables for reuse.
++        BaseComponent[] components;
++        TextComponent textComponent;
++        String json;
++
++        textComponent = new TextComponent("Test");
++        textComponent.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM, new BaseComponent[]
++            {
++                new TextComponent("{id:\"minecraft:netherrack\",Count:47b}")
++            }));
++        testDissembleReassemble(new BaseComponent[]
++            {
++                textComponent
++            });
++        json = "{\"text\":\"Test\",\"hoverEvent\":{\"action\":\"show_item\",\"value\":[{\"text\":\"{id:\\\"minecraft:netherrack\\\",Count:47b}\"}]}}";
++        testDissembleReassemble(json);
++        //////////
++        String hoverVal = "{\"text\":\"{id:\\\"minecraft:dirt\\\",Count:1b}\"}";
++        json = "{\"extra\":[{\"text\":\"[\"},{\"extra\":[{\"translate\":\"block.minecraft.dirt\"}],\"text\":\"\"},{\"text\":\"]\"}],\"hoverEvent\":{\"action\":\"show_item\",\"value\":[" + hoverVal + "]},\"text\":\"\"}";
++        components = ComponentSerializer.parse(json);
++        Text contentText = ((Text) components[0].getHoverEvent().getContents().get(0));
++        Assert.assertEquals(hoverVal, ComponentSerializer.toString((BaseComponent[]) contentText.getValue()));
++        testDissembleReassemble(components);
++        //////////
++        TextComponent component1 = new TextComponent("HoverableText");
++        String nbt = "{display:{Name:{text:Hello},Lore:[{text:Line_1},{text:Line_2}]},ench:[{id:49,lvl:5}],Unbreakable:1}}";
++        Item contentItem = new Item("minecraft:wood", 1, ItemTag.ofNbt(nbt));
++        HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_ITEM, contentItem);
++        component1.setHoverEvent(hoverEvent);
++        json = ComponentSerializer.toString(component1);
++        components = ComponentSerializer.parse(json);
++        Item parsedContentItem = ((Item) components[0].getHoverEvent().getContents().get(0));
++        Assert.assertEquals(contentItem, parsedContentItem);
++        Assert.assertEquals(contentItem.getCount(), parsedContentItem.getCount());
++        Assert.assertEquals(contentItem.getId(), parsedContentItem.getId());
++        Assert.assertEquals(nbt, parsedContentItem.getTag().getNbt());
++    }
++
++    @Test
++    public void testModernShowAdvancement() {
++        String advancement = "achievement.openInventory";
++        // First do the text using the newer contents system
++        HoverEvent hoverEvent = new HoverEvent(
++            HoverEvent.Action.SHOW_TEXT,
++            new Text(advancement)
++        );
++        TextComponent component = new TextComponent("test");
++        component.setHoverEvent(hoverEvent);
++        Assert.assertEquals(component.getHoverEvent().getContents().size(), 1);
++        Assert.assertTrue(component.getHoverEvent().getContents().get(0) instanceof Text);
++        Assert.assertEquals(((Text) component.getHoverEvent().getContents().get(0)).getValue(), advancement);
++    }
++
++    @Test
++    public void testHoverEventContents() {
++        // First do the text using the newer contents system
++        HoverEvent hoverEvent = new HoverEvent(
++            HoverEvent.Action.SHOW_TEXT,
++            new Text(new ComponentBuilder("First").create()),
++            new Text(new ComponentBuilder("Second").create())
++        );
++
++        TextComponent component = new TextComponent("Sample text");
++        component.setHoverEvent(hoverEvent);
++        Assert.assertEquals(hoverEvent.getContents().size(), 2);
++        Assert.assertFalse(hoverEvent.isLegacy());
++        String serialized = ComponentSerializer.toString(component);
++        BaseComponent[] deserialized = ComponentSerializer.parse(serialized);
++        Assert.assertEquals(component.getHoverEvent(), deserialized[0].getHoverEvent());
++
++        // check the test still works with the value method
++        hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("Sample text").create());
++        Assert.assertEquals(hoverEvent.getContents().size(), 1);
++        Assert.assertTrue(hoverEvent.isLegacy());
++        serialized = ComponentSerializer.toString(component);
++        deserialized = ComponentSerializer.parse(serialized);
++        Assert.assertEquals(component.getHoverEvent(), deserialized[0].getHoverEvent());
++
++        // Test single content:
++        String json = "{\"italic\":true,\"color\":\"gray\",\"translate\":\"chat.type.admin\",\"with\":[{\"text\":\"@\"}"
++            + ",{\"translate\":\"commands.give.success.single\",\"with\":[\"1\",{\"color\":\"white\""
++            + ",\"hoverEvent\":{\"action\":\"show_item\",\"contents\":{\"id\":\"minecraft:diamond_sword\",\"tag\":\""
++            + "{Damage:0,display:{Lore:['\\\"test lore'!\\\"'],Name:'\\\"test\\\"'}}\"}},"
++            + "\"extra\":[{\"italic\":true,\"extra\":[{\"text\":\"test\"}],\"text\":\"\"},{\"text\":\"]\"}],"
++            + "\"text\":\"[\"},{\"insertion\":\"Name\",\"clickEvent\":{\"action\":\"suggest_command\",\"value\":"
++            + "\"/tell Name \"},\"hoverEvent\":{\"action\":\"show_entity\",\"contents\":"
++            + "{\"type\":\"minecraft:player\",\"id\":\"00000000-0000-0000-0000-00000000000000\",\"name\":"
++            + "{\"text\":\"Name\"}}},\"text\":\"Name\"}]}]}";
++        testDissembleReassemble(ComponentSerializer.parse(json));
++    }
++
++    @Test
++    public void testFormatRetentionCopyFormatting() {
++        TextComponent first = new TextComponent("Hello");
++        first.setBold(true);
++        first.setColor(ChatColor.RED);
++        first.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "test"));
++        first.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("Test").create()));
++
++        TextComponent second = new TextComponent(" world");
++        second.copyFormatting(first, ComponentBuilder.FormatRetention.ALL, true);
++        Assert.assertEquals(first.isBold(), second.isBold());
++        Assert.assertEquals(first.getColor(), second.getColor());
++        Assert.assertEquals(first.getClickEvent(), second.getClickEvent());
++        Assert.assertEquals(first.getHoverEvent(), second.getHoverEvent());
++    }
++
++    @Test
++    public void testScore() {
++        BaseComponent[] component = ComponentSerializer.parse("{\"score\":{\"name\":\"@p\",\"objective\":\"TEST\",\"value\":\"hello\"}}");
++        String text = ComponentSerializer.toString(component);
++        BaseComponent[] reparsed = ComponentSerializer.parse(text);
++
++        Assert.assertArrayEquals(component, reparsed);
++    }
++
++    @Test
++    public void testLegacyConverter() {
++        BaseComponent[] test1 = TextComponent.fromLegacyText(ChatColor.AQUA + "Aqua " + ChatColor.RED + ChatColor.BOLD + "RedBold");
++
++        Assert.assertEquals("Aqua RedBold", BaseComponent.toPlainText(test1));
++        Assert.assertEquals(ChatColor.AQUA + "Aqua " + ChatColor.RED + ChatColor.BOLD + "RedBold", BaseComponent.toLegacyText(test1));
++
++        BaseComponent[] test2 = TextComponent.fromLegacyText("Text http://spigotmc.org " + ChatColor.GREEN + "google.com/test");
++
++        Assert.assertEquals("Text http://spigotmc.org google.com/test", BaseComponent.toPlainText(test2));
++        //The extra ChatColor instances are sometimes inserted when not needed but it doesn't change the result
++        Assert.assertEquals(ChatColor.WHITE + "Text " + ChatColor.WHITE + "http://spigotmc.org" + ChatColor.WHITE
++            + " " + ChatColor.GREEN + "google.com/test" + ChatColor.GREEN, BaseComponent.toLegacyText(test2));
++
++        ClickEvent url1 = test2[1].getClickEvent();
++        Assert.assertNotNull(url1);
++        Assert.assertTrue(url1.getAction() == ClickEvent.Action.OPEN_URL);
++        Assert.assertEquals("http://spigotmc.org", url1.getValue());
++
++        ClickEvent url2 = test2[3].getClickEvent();
++        Assert.assertNotNull(url2);
++        Assert.assertTrue(url2.getAction() == ClickEvent.Action.OPEN_URL);
++        Assert.assertEquals("http://google.com/test", url2.getValue());
++    }
++
++    @Test
++    public void testTranslateComponent() {
++        TranslatableComponent item = new TranslatableComponent("item.swordGold.name");
++        item.setColor(ChatColor.AQUA);
++        TranslatableComponent translatableComponent = new TranslatableComponent("commands.give.success",
++            item, "5",
++            "thinkofdeath");
++
++        Assert.assertEquals("Given Golden Sword * 5 to thinkofdeath", translatableComponent.toPlainText());
++        Assert.assertEquals(ChatColor.WHITE + "Given " + ChatColor.AQUA + "Golden Sword" + ChatColor.WHITE
++                + " * " + ChatColor.WHITE + "5" + ChatColor.WHITE + " to " + ChatColor.WHITE + "thinkofdeath",
++            translatableComponent.toLegacyText());
++
++        TranslatableComponent positional = new TranslatableComponent("book.pageIndicator", "5", "50");
++
++        Assert.assertEquals("Page 5 of 50", positional.toPlainText());
++        Assert.assertEquals(ChatColor.WHITE + "Page " + ChatColor.WHITE + "5" + ChatColor.WHITE + " of " + ChatColor.WHITE + "50", positional.toLegacyText());
++
++        TranslatableComponent one_four_two = new TranslatableComponent("filled_map.buried_treasure");
++        Assert.assertEquals("Buried Treasure Map", one_four_two.toPlainText());
++    }
++
++    @Test
++    public void testBuilder() {
++        BaseComponent[] components = new ComponentBuilder("Hello ").color(ChatColor.RED).
++            append("World").bold(true).color(ChatColor.BLUE).
++            append("!").color(ChatColor.YELLOW).create();
++
++        Assert.assertEquals("Hello World!", BaseComponent.toPlainText(components));
++        Assert.assertEquals(ChatColor.RED + "Hello " + ChatColor.BLUE + ChatColor.BOLD
++            + "World" + ChatColor.YELLOW + ChatColor.BOLD + "!", BaseComponent.toLegacyText(components));
++    }
++
++    @Test
++    public void testBuilderReset() {
++        BaseComponent[] components = new ComponentBuilder("Hello ").color(ChatColor.RED)
++            .append("World").reset().create();
++
++        Assert.assertEquals(components[0].getColor(), ChatColor.RED);
++        Assert.assertEquals(components[1].getColor(), ChatColor.WHITE);
++    }
++
++    @Test
++    public void testBuilderFormatRetention() {
++        BaseComponent[] noneRetention = new ComponentBuilder("Hello ").color(ChatColor.RED)
++            .append("World", ComponentBuilder.FormatRetention.NONE).create();
++
++        Assert.assertEquals(noneRetention[0].getColor(), ChatColor.RED);
++        Assert.assertEquals(noneRetention[1].getColor(), ChatColor.WHITE);
++
++        HoverEvent testEvent = new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("test").create());
++
++        BaseComponent[] formattingRetention = new ComponentBuilder("Hello ").color(ChatColor.RED)
++            .event(testEvent).append("World", ComponentBuilder.FormatRetention.FORMATTING).create();
++
++        Assert.assertEquals(formattingRetention[0].getColor(), ChatColor.RED);
++        Assert.assertEquals(formattingRetention[0].getHoverEvent(), testEvent);
++        Assert.assertEquals(formattingRetention[1].getColor(), ChatColor.RED);
++        Assert.assertNull(formattingRetention[1].getHoverEvent());
++
++        ClickEvent testClickEvent = new ClickEvent(ClickEvent.Action.OPEN_URL, "http://www.example.com");
++
++        BaseComponent[] eventRetention = new ComponentBuilder("Hello ").color(ChatColor.RED)
++            .event(testEvent).event(testClickEvent).append("World", ComponentBuilder.FormatRetention.EVENTS).create();
++
++        Assert.assertEquals(eventRetention[0].getColor(), ChatColor.RED);
++        Assert.assertEquals(eventRetention[0].getHoverEvent(), testEvent);
++        Assert.assertEquals(eventRetention[0].getClickEvent(), testClickEvent);
++        Assert.assertEquals(eventRetention[1].getColor(), ChatColor.WHITE);
++        Assert.assertEquals(eventRetention[1].getHoverEvent(), testEvent);
++        Assert.assertEquals(eventRetention[1].getClickEvent(), testClickEvent);
++    }
++
++    @Test
++    public void testRepeated() {
++        TextComponent a = new TextComponent("A");
++        TextComponent b = new TextComponent("B");
++        b.setColor(ChatColor.AQUA);
++        a.addExtra(b);
++        a.addExtra(b);
++        ComponentSerializer.toString(a);
++    }
++
++    @Test
++    public void testInvalidColorCodes() {
++        StringBuilder allInvalidColorCodes = new StringBuilder();
++
++        // collect all invalid color codes (e.g. §z, §g, ...)
++        for (char alphChar : "0123456789abcdefghijklmnopqrstuvwxyz".toCharArray()) {
++            if (ChatColor.ALL_CODES.indexOf(alphChar) == -1) {
++                allInvalidColorCodes.append(ChatColor.COLOR_CHAR);
++                allInvalidColorCodes.append(alphChar);
++            }
++        }
++
++        // last char is a single '§'
++        allInvalidColorCodes.append(ChatColor.COLOR_CHAR);
++
++        String invalidColorCodesLegacyText = fromAndToLegacyText(allInvalidColorCodes.toString());
++        String emptyLegacyText = fromAndToLegacyText("");
++
++        // all invalid color codes and the trailing '§' should be ignored
++        Assert.assertEquals(emptyLegacyText, invalidColorCodesLegacyText);
++    }
++
++    @Test
++    public void testFormattingOnlyTextConversion() {
++        String text = "§a";
++
++        BaseComponent[] converted = TextComponent.fromLegacyText(text);
++        Assert.assertEquals(ChatColor.GREEN, converted[0].getColor());
++
++        String roundtripLegacyText = BaseComponent.toLegacyText(converted);
++
++        // color code should not be lost during conversion
++        Assert.assertEquals(text, roundtripLegacyText);
++    }
++
++    @Test
++    public void testEquals() {
++        TextComponent first = new TextComponent("Hello, ");
++        first.addExtra(new TextComponent("World!"));
++
++        TextComponent second = new TextComponent("Hello, ");
++        second.addExtra(new TextComponent("World!"));
++
++        Assert.assertEquals(first, second);
++    }
++
++    @Test
++    public void testNotEquals() {
++        TextComponent first = new TextComponent("Hello, ");
++        first.addExtra(new TextComponent("World."));
++
++        TextComponent second = new TextComponent("Hello, ");
++        second.addExtra(new TextComponent("World!"));
++
++        Assert.assertNotEquals(first, second);
++    }
++
++    @Test
++    public void testLegacyHack() {
++        BaseComponent[] hexColored = new ComponentBuilder().color(ChatColor.of(Color.GRAY)).append("Test").create();
++        String legacy = TextComponent.toLegacyText(hexColored);
++
++        BaseComponent[] reColored = TextComponent.fromLegacyText(legacy);
++
++        Assert.assertArrayEquals(hexColored, reColored);
++    }
++
++    private String fromAndToLegacyText(String legacyText) {
++        return BaseComponent.toLegacyText(TextComponent.fromLegacyText(legacyText));
++    }
++}
